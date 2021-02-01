@@ -59,32 +59,62 @@ void CTracker::UpdateTrackingState(const regions_t& regions,
 {
     const size_t N = m_tracks.size();	// Tracking objects
     const size_t M = regions.size();	// Detections or regions
+	const size_t paddedSize = N + M;
 
     assignments_t assignment(N, -1); // Assignments regions -> tracks
-
+	assignments_t assignment_all(paddedSize, -1); //
     std::vector<RegionEmbedding> regionEmbeddings;
 
     if (!m_tracks.empty())			// 如果轨迹不为空，创建代价矩阵
     {
         // Distance matrix between all tracks to all regions
-        distMatrix_t costMatrix(N * M);
+		distMatrix_t costMatrix_NM(N * M, FLT_MAX);
+		distMatrix_t costMatrix(paddedSize * paddedSize, FLT_MAX);
         const track_t maxPossibleCost = static_cast<track_t>(currFrame.cols * currFrame.rows);
         track_t maxCost = 0;
-        CreateDistaceMatrix(regions, regionEmbeddings, costMatrix, maxPossibleCost, maxCost, currFrame);
+        CreateDistaceMatrix(regions, regionEmbeddings, costMatrix_NM, maxPossibleCost, maxCost, currFrame);
 
+		for (int i = 0; i < N; i++)						// i->row
+		{
+			for (int j = 0; j < M; j++)					// j->col
+			{
+				costMatrix[i + j * paddedSize] = costMatrix_NM[i + j * N];// 列扫描
+			}
+		}
+
+		for (int i = 0; i < N; i++) // (i, M+i)
+			costMatrix[i + (M + i) * paddedSize] = 8; // costUnmatchedTracks
+		for (int j = 0; j < M; j++)	// (N+j, j)
+			costMatrix[N + j + j * paddedSize] = 8;	// costUnmatchedDetecions
+		for (int i = N; i < paddedSize; i++)
+			for (int j = M; j < paddedSize; j++)
+				costMatrix[i + j * paddedSize] = 0;
         // Solving assignment problem (shortest paths)
-        m_SPCalculator->Solve(costMatrix, N, M, assignment, maxCost);
+        m_SPCalculator->Solve(costMatrix, paddedSize, paddedSize, assignment_all, maxCost);
+		
+		// 确认unsignedTracks和unsignedDetections
+		for (size_t i = 0; i < N; i++)
+		{
+			if (assignment_all[i] >= M)	// unsignedTracks
+				assignment[i] = -1;
+			else
+				assignment[i] = assignment_all[i];
+		}
+
 
         // clean assignment from pairs with large distance
         for (size_t i = 0; i < assignment.size(); i++)
         {
             if (assignment[i] != -1)
             {
+				std::cout << "Track " << i << " match Detection " << assignment[i] << std::endl << std::endl;
+#if 0
 				if (costMatrix[i + assignment[i] * N] > m_settings.m_distThres)
                 {
                     assignment[i] = -1;
                     m_tracks[i]->SkippedFrames()++;
                 }
+#endif
             }
             else
             {
@@ -97,8 +127,8 @@ void CTracker::UpdateTrackingState(const regions_t& regions,
         for (size_t i = 0; i < m_tracks.size();)
         {
             if (m_tracks[i]->SkippedFrames() > m_settings.m_maximumAllowedSkippedFrames ||
-				m_tracks[i]->IsOutOfTheFrame() ||
-                    m_tracks[i]->IsStaticTimeout(cvRound(fps * (m_settings.m_maxStaticTime - m_settings.m_minStaticTime))))
+				m_tracks[i]->IsOutOfTheFrame()) //||
+				/* m_tracks[i]->IsStaticTimeout(cvRound(fps * (m_settings.m_maxStaticTime - m_settings.m_minStaticTime)))) */
             {
                 m_tracks.erase(m_tracks.begin() + i);
                 assignment.erase(assignment.begin() + i);
@@ -180,10 +210,29 @@ void CTracker::CreateDistaceMatrix(const regions_t& regions,
 {
     const size_t N = m_tracks.size();	// Tracking objects
     maxCost = 0;
-
+#ifdef DEBUG_USE
+	std::vector<TrackingObject> m_tracks4debug;
+	m_tracks4debug = GetTracks();
+	std::cout << "Tracks has " << N << "\t";
+	std::cout << "Regions has " << regions.size() << std::endl;
+	std::cout << "Track_ID" << "\t";
+	for (int i = 0; i < regions.size(); i++)
+	{
+		std::cout << "\t" << i;
+	}
+	std::cout << std::endl;
+#endif
 	for (size_t i = 0; i < N; ++i)		// 轨迹的大小
 	{
 		const auto& track = m_tracks[i];// CTracker的m_tracks是vector<CTrack>
+#ifdef DEBUG_USE
+		const auto& track4debug = m_tracks4debug[i];
+		cv::Rect brect = track4debug.m_rrect.boundingRect();
+		std::cout << "  " << track4debug.m_ID <<" skip ="<< m_tracks[i]->SkippedFrames()<< "\t\t";
+			//<< " ,包围框：(" << brect.x << "," << brect.y << ","
+			//<< brect.width << "," << brect.height << ")\t trace_size = " << track4debug.m_trace.size()
+			//<< "skipFrame = " << m_tracks[i]->SkippedFrames() << std::endl;
+#endif
 
 		// Calc predicted area for track
 		cv::Size_<track_t> minRadius;
@@ -203,7 +252,11 @@ void CTracker::CreateDistaceMatrix(const regions_t& regions,
 		for (size_t j = 0; j < regions.size(); ++j)
 		{
 			const auto& reg = regions[j];
-
+#ifdef DEBUG_USE
+			/*std::cout << "\t\t" << "检测" << j << ": 包围框（" << regions[j].m_brect.x << "," << regions[j].m_brect.y << ","
+				<< regions[j].m_brect.width << "," << regions[j].m_brect.height << ")" << "\t";*/
+			//std::cout << "\t" << j;
+#endif
 			auto dist = maxPossibleCost;
 			if (m_settings.CheckType(m_tracks[i]->LastRegion().m_type, reg.m_type))
 			{
@@ -213,12 +266,16 @@ void CTracker::CreateDistaceMatrix(const regions_t& regions,
 				{
 #if 1
 					/* 计算马氏距离 by zhr*/
-					//track_t ellipseDist = track->CalcMahalanobisDist(reg.m_rrect);
-                    track_t ellipseDist = track->IsInsideArea(reg.m_rrect.center, predictedArea);
-                    if (ellipseDist > 1)//圆内还是圆外，有一个预测圆心的距离。
-                        dist += m_settings.m_distType[ind];
-                    else
-                        dist += ellipseDist * m_settings.m_distType[ind];
+					track_t ellipseDist = track->CalcMahalanobisDist(reg.m_rrect);
+					dist += ellipseDist;
+#ifdef DEBUG_USE
+					std::cout <<  ellipseDist << "\t";
+#endif
+                    //track_t ellipseDist = track->IsInsideArea(reg.m_rrect.center, predictedArea);
+                    //if (ellipseDist > 1)//圆内还是圆外，有一个预测圆心的距离。
+                    //    dist += m_settings.m_distType[ind];
+                    //else
+                    //    dist += ellipseDist * m_settings.m_distType[ind];
 #else
 					dist += m_settings.m_distType[ind] * track->CalcDistCenter(reg);
 #endif
@@ -264,5 +321,8 @@ void CTracker::CreateDistaceMatrix(const regions_t& regions,
 			if (dist > maxCost)
 				maxCost = dist;
 		}
+#ifdef DEBUG_USE
+		std::cout << std::endl;
+#endif
 	}
 }

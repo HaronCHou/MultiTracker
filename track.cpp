@@ -193,8 +193,7 @@ void CTrack::Update(const CRegion& region,
 
         m_lastRegion = region;
         m_trace.push_back(m_predictionPoint, region.m_rrect.center);
-
-        CheckStatic(trajLen, currFrame, region);
+        //CheckStatic(trajLen, currFrame, region);
     }
     else
     {
@@ -327,13 +326,20 @@ track_t CTrack::IsInsideArea(const Point_t& pt, const cv::RotatedRect& rrect) co
 track_t CTrack::CalcMahalanobisDist(const cv::RotatedRect& rrect) const
 {
 	// 1. 先要计算一个Pt_state，即预测的部分；然后要取得残差协方差矩阵，然后计算马氏距离。
-	cv::Mat res1, res2;
-	m_kalman.GetPtStateAndResCov(res1, res2);
-	cv::Mat pt_ = cv::Mat::zeros(2, 1, CV_32F);
-	pt_.data[0] = res2.data[0] - rrect.center.x;
-	pt_.data[1] = res2.data[1] - rrect.center.y;
-	track_t MahaDist = cv::Mahalanobis(pt_, pt_, res2);
-	return MahaDist;
+	cv::Mat res1, predictPoint;
+	// res1 = Hn * Pn+1|n+1 * Hn^T + Rn+1	残差协方差，增益的逆
+	// res2 = Hn * Xn+1|n
+	m_kalman.GetPtStateAndResCov(res1, predictPoint);
+	cv::Mat icovar_Pn;
+	cv::invert(res1, icovar_Pn, cv::DECOMP_SVD);
+	//track_t MahaDist = FLT_MAX;
+	double MahaDist = 0.0;
+	if (!res1.empty() && !predictPoint.empty()) {
+		cv::Mat measurePoint = (cv::Mat_<track_t>(2, 1) << rrect.center.x, rrect.center.y); // 观测
+		MahaDist = (float)cv::Mahalanobis(measurePoint, predictPoint, icovar_Pn);				// res2为残差协方差
+		MahaDist += std::log(cv::determinant(res1));
+	}
+	return (float)MahaDist;
 }
 
 ///

@@ -50,22 +50,17 @@ void TKalmanFilter::CreateLinear(Point_t xy0, Point_t xyv0)
     m_linearKalman.statePost.at<track_t>(3) = xyv0.y;
 
     cv::setIdentity(m_linearKalman.measurementMatrix);
-
-    m_linearKalman.processNoiseCov = (cv::Mat_<track_t>(4, 4) <<
-                                       pow(m_deltaTime,4.0)/4.0	,0						,pow(m_deltaTime,3.0)/2.0		,0,
-                                       0						,pow(m_deltaTime,4.0)/4.0	,0							,pow(m_deltaTime,3.0)/2.0,
-                                       pow(m_deltaTime,3.0)/2.0	,0						,pow(m_deltaTime,2.0)			,0,
-                                       0						,pow(m_deltaTime,3.0)/2.0	,0							,pow(m_deltaTime,2.0));
-
-
+	// Qn 要比较大 
+	m_linearKalman.processNoiseCov = (cv::Mat_<track_t>(4, 4) <<
+		100, 0, 0, 0,
+		0, 100, 0, 0,
+		0, 0, 25, 0,
+		0, 0, 0, 25);
     m_linearKalman.processNoiseCov *= m_accelNoiseMag;
-
-    cv::setIdentity(m_linearKalman.measurementNoiseCov, cv::Scalar::all(0.1));
-
-    cv::setIdentity(m_linearKalman.errorCovPost, cv::Scalar::all(.1));
-
-	m_initialPoints.reserve(MIN_INIT_VALS);
-
+	// Rn
+    cv::setIdentity(m_linearKalman.measurementNoiseCov, cv::Scalar::all(100));	 // 测量噪声，x和y测量噪声
+    // Pn 初始化
+	cv::setIdentity(m_linearKalman.errorCovPre, cv::Scalar::all(200));		// 初始化的误差协方差要很大，相信检测
     m_initialized = true;
 }
 
@@ -566,59 +561,23 @@ Point_t TKalmanFilter::Update(Point_t pt, bool dataCorrect)
 {
     if (!m_initialized)//如果未初始化
     {
-        if (m_initialPoints.size() < MIN_INIT_VALS)//4 初始点数
-        {
-            if (dataCorrect)
-            {
-                m_initialPoints.push_back(pt);
-                m_lastPointResult = pt;
-            }
-        }
-        if (m_initialPoints.size() == MIN_INIT_VALS)
-        {
-            track_t kx = 0;
-            track_t bx = 0;
-            track_t ky = 0;
-            track_t by = 0;
-            get_lin_regress_params(m_initialPoints, 0, MIN_INIT_VALS, kx, bx, ky, by);
-            Point_t xy0(kx * (MIN_INIT_VALS - 1) + bx, ky * (MIN_INIT_VALS - 1) + by);
-            Point_t xyv0(kx, ky);
+		if (dataCorrect)
+			m_lastPointResult = pt;
 
-            switch (m_type)
-            {
-            case tracking::KalmanLinear:
-                if (m_useAcceleration)
-					CreateLinearAcceleration(xy0, xyv0);
-				else
-					CreateLinear(xy0, xyv0);
-                break;
+		Point_t xy0(pt.x, pt.y);
+		Point_t xyv0(0, 0);
 
-            case tracking::KalmanUnscented:
-#ifdef USE_OCV_UKF
-                CreateUnscented(xy0, xyv0);
-#else
-				if (m_useAcceleration)
-					CreateLinearAcceleration(xy0, xyv0);
-				else
-					CreateLinear(xy0, xyv0);
-                std::cerr << "UnscentedKalmanFilter was disabled in CMAKE! Set KalmanLinear in constructor." << std::endl;
-#endif
-                break;
-
-            case tracking::KalmanAugmentedUnscented:
-#ifdef USE_OCV_UKF
-                CreateAugmentedUnscented(xy0, xyv0);
-#else
-				if (m_useAcceleration)
-					CreateLinearAcceleration(xy0, xyv0);
-				else
-					CreateLinear(xy0, xyv0);
-                std::cerr << "AugmentedUnscentedKalmanFilter was disabled in CMAKE! Set KalmanLinear in constructor." << std::endl;
-#endif
-                break;
-            }
-            m_lastDist = 0;
-        }
+		switch (m_type)
+		{
+		case tracking::KalmanLinear:
+			if (m_useAcceleration)
+				CreateLinearAcceleration(xy0, xyv0);
+			else
+				CreateLinear(xy0, xyv0);	// xy0为初始位置， xyv0为初始速度（可以直接初始化为0）
+			break;
+			m_lastDist = 0;
+		}
+       
     }
 
     if (m_initialized)
@@ -909,15 +868,13 @@ cv::Vec<track_t, 2> TKalmanFilter::GetVelocity() const
 /* 为了获得状态点和残差，需要自己计算的 */
 void TKalmanFilter::GetPtStateAndResCov(cv::Mat &res1, cv::Mat &res2) const
 {
-	//res[0] = cv::Mat::zeros(m_linearKalman.statePre.rows, m_linearKalman.statePre.cols,CV_32F);
-	//res[1] = cv::Mat::zeros(m_linearKalman.errorCovPost.rows, m_linearKalman.errorCovPost.cols, CV_32F);
 	if (m_initialized)
 	{
 		switch (m_type)
 		{
 		case tracking::KalmanLinear:
 		{
-			cv::Mat temp2 = m_linearKalman.measurementMatrix * m_linearKalman.errorCovPost;
+			cv::Mat temp2 = m_linearKalman.measurementMatrix * m_linearKalman.errorCovPre;
 			gemm(temp2, m_linearKalman.measurementMatrix, 1, m_linearKalman.measurementNoiseCov, 1, res1, CV_HAL_GEMM_2_T);
 			res2 = m_linearKalman.measurementMatrix * m_linearKalman.statePost;			
 			break;

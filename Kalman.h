@@ -42,12 +42,12 @@ private:
     cv::Rect_<track_t> m_lastRect;
     Point_t m_lastPointResult;
     track_t m_accelNoiseMag = 0.5f;
-    track_t m_deltaTime = 0.2f;
-    track_t m_deltaTimeMin = 0.2f;
-    track_t m_deltaTimeMax = 2 * 0.2f;
+    track_t m_deltaTime = 1/*0.2f*/;
+    track_t m_deltaTimeMin = 1/* 0.2f*/;
+    track_t m_deltaTimeMax = 3/*2 * 0.2f*/;
     track_t m_lastDist = 0;
     track_t m_deltaStep = 0;
-    static constexpr int m_deltaStepsCount = 20;
+    static constexpr int m_deltaStepsCount = 2;
     tracking::KalmanType m_type = tracking::KalmanLinear;
     bool m_useAcceleration = false; // If set true then will be used motion model x(t) = x0 + v0 * t + a * t^2 / 2
     bool m_initialized = false;

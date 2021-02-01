@@ -162,7 +162,7 @@ void AssignmentProblemSolver::buildassignmentvector(assignments_t& assignment, b
 		{
 			if (starMatrix[row + nOfRows * col])
 			{
-				assignment[row] = static_cast<int>(col);
+				assignment[row] = static_cast<int>(col);	// 最后决策的地方
 				break;
 			}
 		}

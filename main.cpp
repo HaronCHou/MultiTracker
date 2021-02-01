@@ -4,6 +4,7 @@
 #include "defines.h"
 #include <iostream>
 
+
 /*#define SILENT_WORK*/						// 是否关闭可视化
 
 void detection();
@@ -20,9 +21,9 @@ void DrawFilledRect(cv::Mat& frame, const cv::Rect& rect, cv::Scalar cl, int alp
 void CalcMotionMap(cv::Mat& frame, cv::Mat m_fg);
 
 std::vector<cv::Scalar> m_colors;
-
+void DrawDetect(cv::Mat& segmentationMap, regions_t m_regions);
 int main(int argc, char** argv) {
-	m_colors.push_back(cv::Scalar(255, 0, 0)); // 颜色入栈
+	m_colors.push_back(cv::Scalar(255, 0, 0));				 // 颜色入栈
 	m_colors.push_back(cv::Scalar(0, 255, 0));
 	m_colors.push_back(cv::Scalar(0, 0, 255));
 	m_colors.push_back(cv::Scalar(255, 255, 0));
@@ -32,7 +33,8 @@ int main(int argc, char** argv) {
 	m_colors.push_back(cv::Scalar(127, 0, 255));
 	m_colors.push_back(cv::Scalar(127, 0, 127));
 
-	std::string videoFilename = "G:\\python_based_algo\\Multitarget-tracker\\data\\multiobjec_car.avi"; // TrackingBugs.mp4
+	std::string videoFilename = "G:\\python_based_algo\\Multitarget-tracker\\data\\multiobjec_hard.avi"; 
+	// TrackingBugs.mp4 multiobjec_car.avi atrium.mp4  multiobjec_hard.avi  1.avi road.avi
 	cv::VideoCapture capture(videoFilename);		
 
 	int64 startLoopTime = cv::getTickCount();
@@ -77,7 +79,7 @@ int main(int argc, char** argv) {
 		libvibeModel_Sequential_Update_8u_C3R(model, frame.data, segmentationMap.data/*, historyImage, historyBuffer*/);
 		
 		// 前景操作
-		cv::medianBlur(segmentationMap, segmentationMap, 3);
+		//cv::medianBlur(segmentationMap, segmentationMap, 3);
 
 		// 加入形态学操作：先开操作 3*3；再闭操作
 		cv::Mat dilateElement = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3), cv::Point(-1, -1));
@@ -86,22 +88,67 @@ int main(int argc, char** argv) {
 		cv::morphologyEx(segmentationMap, segmentationMap, cv::MORPH_OPEN, dilateElement);
 		cv::morphologyEx(segmentationMap, segmentationMap, cv::MORPH_CLOSE, kernel_close);
 		
-		cv::imshow("前景", segmentationMap);
 		// tracking
 		regions_t m_regions;
 		DetectContour(segmentationMap, m_regions);
+		DrawDetect(segmentationMap, m_regions);
+		cv::imshow("", segmentationMap);
 		Tracking(frame, m_regions);
 
 		int64 t2 = cv::getTickCount();
 		int currTime = cvRound(1000 * (t2 - t1) / freq);
 		DrawData(frame, framesCounter, currTime, segmentationMap);
 		cv::imshow("Video", frame);
+
 		cv::waitKey(400);
 		++framesCounter;
 	}
 	return 0;
 }
+bool InitTracker(cv::Mat frame) {
+	bool m_trackerSettingsLoaded = false;
+	if (!m_trackerSettingsLoaded)
+	{
+		m_trackerSettings.SetDistance(tracking::DistCenters);
+		m_trackerSettings.m_kalmanType = tracking::KalmanLinear;
+		m_trackerSettings.m_filterGoal = tracking::FilterCenter;			// 中心点
+		m_trackerSettings.m_lostTrackType = tracking::TrackCSRT;       // Use visual objects tracker for collisions resolving
+		m_trackerSettings.m_matchType = tracking::MatchHungrian;
+		m_trackerSettings.m_useAcceleration = false;                   // Use constant acceleration motion model
+		m_trackerSettings.m_dt = m_trackerSettings.m_useAcceleration ? 0.05f : 1.0f/*0.5*/; // Delta time for Kalman filter
+		m_trackerSettings.m_accelNoiseMag = 1.0f;                  // Accel noise magnitude for Kalman filter 0.2
+		// cost代价矩阵的剔除阈值
+		m_trackerSettings.m_distThres = 20/*0.95f*/;                    // Distance threshold between region and object on two frames
+#if 0
+		m_trackerSettings.m_minAreaRadiusPix = frame.rows / 20.f;
+#else
+		m_trackerSettings.m_minAreaRadiusPix = -1.f;
+#endif
+		m_trackerSettings.m_minAreaRadiusK = 0.8f;
 
+		m_trackerSettings.m_useAbandonedDetection = true;
+
+		// 设置参数 决定 删除轨迹的规则
+		if (m_trackerSettings.m_useAbandonedDetection)
+		{
+			m_trackerSettings.m_minStaticTime = 5;	// m_minStaticTime = 5; 最小静止帧数
+			m_trackerSettings.m_maxStaticTime = 10; // 最大静止帧数  下面是最大的允许跳过帧数（没找到ID跟他匹配的skipFrames)150,这个还是很大 5s没看见
+													// 超过10没找到，则重新开始新ID
+			m_trackerSettings.m_maximumAllowedSkippedFrames = 3;//cvRound(m_trackerSettings.m_minStaticTime * m_fps); // Maximum allowed skipped frames
+																// 最多画出10个轨迹
+																/*m_trackerSettings.m_maxTraceLength = 2 * m_trackerSettings.m_maximumAllowedSkippedFrames; */       // Maximum trace length
+			m_trackerSettings.m_maxTraceLength = 10;
+		}
+		else
+		{
+			m_trackerSettings.m_maximumAllowedSkippedFrames = cvRound(2 * m_fps); // Maximum allowed skipped frames
+			m_trackerSettings.m_maxTraceLength = cvRound(4 * m_fps);              // Maximum trace length
+		}
+	}
+
+	m_tracker = std::make_unique<CTracker>(m_trackerSettings);
+	return true;
+}
 
 void DrawTrack(cv::Mat frame,
 	int resizeCoeff,
@@ -246,7 +293,7 @@ void DrawData(cv::Mat frame, int framesCounter, int currTime, cv::Mat fg)
 		else
 		{	
 
-			if (track.IsRobust(cvRound(5/*m_fps / 4*/),          // Minimal trajectory size 超过这个才画出来
+			if (track.IsRobust(cvRound(1/*m_fps / 4*/),          // Minimal trajectory size 超过这个才画出来
 				0.1/*0.7f*/,                        // Minimal ratio raw_trajectory_points / trajectory_lenght
 				cv::Size2f(0.1f, 8.0f)))      // Min and max ratio: width / height
 				DrawTrack(frame, 1, track, true, framesCounter);
@@ -333,8 +380,8 @@ void DetectContour(cv::Mat segmentationMap, regions_t &m_regions) {
 
 		//if (br.width >= m_minObjectSize.width &&
 		//	br.height >= m_minObjectSize.height)
-		if (br.width >= 1 &&
-			br.height >= 1)
+		if (br.width >= 5 &&
+			br.height >= 5)
 		{
 			if (false/*m_useRotatedRect*/)
 			{
@@ -349,47 +396,22 @@ void DetectContour(cv::Mat segmentationMap, regions_t &m_regions) {
 	}
 	return;
 }
-
-bool InitTracker(cv::Mat frame) {
-	bool m_trackerSettingsLoaded = false;
-	if (!m_trackerSettingsLoaded)
+void DrawDetect(cv::Mat& segmentationMap, regions_t m_regions) {
+	int resizeCoeff = 1;
+	auto ResizePoint = [resizeCoeff](const cv::Point& pt) -> cv::Point
 	{
-		m_trackerSettings.SetDistance(tracking::DistCenters);
-		m_trackerSettings.m_kalmanType = tracking::KalmanLinear;
-		m_trackerSettings.m_filterGoal = tracking::FilterCenter;			// 中心点
-		m_trackerSettings.m_lostTrackType = tracking::TrackCSRT;       // Use visual objects tracker for collisions resolving
-		m_trackerSettings.m_matchType = tracking::MatchHungrian;
-		m_trackerSettings.m_useAcceleration = false;                   // Use constant acceleration motion model
-		m_trackerSettings.m_dt = m_trackerSettings.m_useAcceleration ? 0.05f : 1.0f/*0.5*/; // Delta time for Kalman filter
-		m_trackerSettings.m_accelNoiseMag = 1.0f;                  // Accel noise magnitude for Kalman filter 0.2
-		m_trackerSettings.m_distThres =  0.95f;                    // Distance threshold between region and object on two frames
-#if 0
-		m_trackerSettings.m_minAreaRadiusPix = frame.rows / 20.f;
-#else
-		m_trackerSettings.m_minAreaRadiusPix = -1.f;
-#endif
-		m_trackerSettings.m_minAreaRadiusK = 0.8f;
-
-		m_trackerSettings.m_useAbandonedDetection = true;
-
-		// 设置参数 决定 删除轨迹的规则
-		if (m_trackerSettings.m_useAbandonedDetection)
+		return cv::Point(resizeCoeff * pt.x, resizeCoeff * pt.y);
+	};
+	for (int i = 0; i < m_regions.size(); i++)
+	{
+		cv::Point2f rectPoints[4];
+		m_regions[i].m_rrect.points(rectPoints);
+		for (int i = 0; i < 4; ++i)
 		{
-			m_trackerSettings.m_minStaticTime = 5;	// m_minStaticTime = 5; 最小静止帧数
-			m_trackerSettings.m_maxStaticTime = 10; // 最大静止帧数  下面是最大的允许跳过帧数（没找到ID跟他匹配的skipFrames)150,这个还是很大 5s没看见
-			// 超过10没找到，则重新开始新ID
-			m_trackerSettings.m_maximumAllowedSkippedFrames = 5;//cvRound(m_trackerSettings.m_minStaticTime * m_fps); // Maximum allowed skipped frames
-			// 最多画出10个轨迹
-			/*m_trackerSettings.m_maxTraceLength = 2 * m_trackerSettings.m_maximumAllowedSkippedFrames; */       // Maximum trace length
-			m_trackerSettings.m_maxTraceLength = 10;
+			cv::line(segmentationMap, ResizePoint(rectPoints[i]), ResizePoint(rectPoints[(i + 1) % 4]), cv::Scalar(255,255,255));
 		}
-		else
-		{
-			m_trackerSettings.m_maximumAllowedSkippedFrames = cvRound(2 * m_fps); // Maximum allowed skipped frames
-			m_trackerSettings.m_maxTraceLength = cvRound(4 * m_fps);              // Maximum trace length
-		}
+		cv::Rect brect = m_regions[i].m_rrect.boundingRect();
+		std::string label = std::to_string(i);
+		cv::putText(segmentationMap, label, brect.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255));
 	}
-
-	m_tracker = std::make_unique<CTracker>(m_trackerSettings);
-	return true;
 }
