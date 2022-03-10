@@ -33,9 +33,9 @@ int main(int argc, char** argv) {
 	m_colors.push_back(cv::Scalar(127, 0, 255));
 	m_colors.push_back(cv::Scalar(127, 0, 127));
 
-	std::string videoFilename = "G:\\python_based_algo\\Multitarget-tracker\\data\\multiobjec_hard.avi"; 
+	std::string videoFilename = "\\multiobjec_hard.avi"; 
 	// TrackingBugs.mp4 multiobjec_car.avi atrium.mp4  multiobjec_hard.avi  1.avi road.avi
-	cv::VideoCapture capture(videoFilename);		
+	cv::VideoCapture capture(videoFilename);
 
 	int64 startLoopTime = cv::getTickCount();
 	bool m_isDetectorInitialized = false;
