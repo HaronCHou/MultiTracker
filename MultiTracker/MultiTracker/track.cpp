@@ -971,4 +971,6 @@ bool  CTrack::isOverspeed(const cv::RotatedRect& rrect, float speedThres) const
 	// res < 3*vx
 	if (res > speedThres * v)
 		return true;
+	else
+		return false;
 }

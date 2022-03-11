@@ -278,11 +278,14 @@ void CTracker::CreateDistaceMatrix(const regions_t& regions,
 #ifdef DEBUG_USE
 					std::cout <<  ellipseDist << "\t";
 #endif
-					// 『功能』：剔除逻辑，若distance metric不合理，就要进一步剔除
-					//bool isOverSpeed = track->isOverspeed(reg.m_rrect, 10.0);
-					//// 速度超过3倍了
-					//if (track->GetTraceSize() == 10 && isOverSpeed)
-					//	dist = 50;	// 不合理的速度，应该剔除
+
+#if 0
+					 //『功能』：剔除逻辑，若distance metric不合理，就要进一步剔除
+					bool isOverSpeed = track->isOverspeed(reg.m_rrect, 10.0);
+					// 速度超过3倍了
+					if (track->GetTraceSize() >= 10 && isOverSpeed)
+						dist = 50;	// 不合理的速度，应该剔除
+#endif
                     //track_t ellipseDist = track->IsInsideArea(reg.m_rrect.center, predictedArea);
                     //if (ellipseDist > 1)//圆内还是圆外，有一个预测圆心的距离。
                     //    dist += m_settings.m_distType[ind];
