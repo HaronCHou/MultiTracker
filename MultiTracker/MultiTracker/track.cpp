@@ -915,7 +915,7 @@ void CTrack::PointUpdate(const Point_t& pt,
                          bool dataCorrect,
                          const cv::Size& frameSize)
 {
-    m_kalman.GetPointPrediction();
+    //m_kalman.GetPointPrediction();
 
     m_predictionPoint = m_kalman.Update(pt, dataCorrect);
 
@@ -945,4 +945,30 @@ void CTrack::PointUpdate(const Point_t& pt,
     m_outOfTheFrame = Clamp(p.x, frameSize.width) || Clamp(p.y, frameSize.height) || (m_predictionRect.size.width < 2) || (m_predictionRect.size.height < 2);
 
 	//std::cout << "predictionRect = " << m_predictionRect.boundingRect() << ", outOfTheFrame = " << m_outOfTheFrame << ", predictionPoint = " << m_predictionPoint << std::endl;
+}
+
+void CTrack::KalmanPredictPoint()
+{
+	m_kalman.GetPointPrediction();
+}
+void CTrack::KalmanPredictRect()
+{
+	m_kalman.GetRectPrediction();
+}
+bool  CTrack::isOverspeed(const cv::RotatedRect& rrect, float speedThres) const
+{
+	float res = 0.0;
+	cv::Mat predict;
+	m_kalman.GetPredictState(predict);
+	float predictX = predict.at<track_t>(0);
+	float predictY = predict.at<track_t>(1);
+	float velocityX = predict.at<track_t>(2);
+	float velocityY = predict.at<track_t>(3);
+	float v = sqrt(sqr(velocityX) + sqr(velocityY));
+
+	res = sqrt(sqr(predictX - rrect.center.x) + sqr(predictY - rrect.center.y));
+	// Δs/Δt=Δv      速度的绝对值，考虑到万一突变了呢（虽然不允许这种情况）
+	// res < 3*vx
+	if (res > speedThres * v)
+		return true;
 }

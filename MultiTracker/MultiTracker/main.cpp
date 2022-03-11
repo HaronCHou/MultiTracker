@@ -116,6 +116,8 @@ bool InitTracker(cv::Mat frame) {
 		m_trackerSettings.m_matchType = tracking::MatchHungrian;
 		m_trackerSettings.m_useAcceleration = false;                   // Use constant acceleration motion model
 		m_trackerSettings.m_dt = m_trackerSettings.m_useAcceleration ? 0.05f : 1.0f/*0.5*/; // Delta time for Kalman filter
+		// for test
+		m_trackerSettings.m_dt = 1; // 50fps=0.2;  0.5fps = 20
 		m_trackerSettings.m_accelNoiseMag = 1.0f;                  // Accel noise magnitude for Kalman filter 0.2
 		// cost代价矩阵的剔除阈值
 		m_trackerSettings.m_distThres = 20/*0.95f*/;                    // Distance threshold between region and object on two frames

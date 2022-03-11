@@ -28,6 +28,7 @@ public:
 
 	cv::Vec<track_t, 2> GetVelocity() const;
 	void GetPtStateAndResCov(cv::Mat &res1, cv::Mat &res2) const;
+	void GetPredictState(cv::Mat &predict) const;
 private:
     cv::KalmanFilter m_linearKalman;
 #ifdef USE_OCV_UKF

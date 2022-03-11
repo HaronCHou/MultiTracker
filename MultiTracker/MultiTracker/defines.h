@@ -6,7 +6,7 @@
 #include <opencv2/opencv.hpp>
 #include "object_types.h"
 
-#define DEBUG_USE
+//#define DEBUG_USE
 
 // ---------------------------------------------------------------------------
 //

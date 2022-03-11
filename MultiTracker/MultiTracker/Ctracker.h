@@ -247,4 +247,5 @@ private:
 
     void CreateDistaceMatrix(const regions_t& regions, std::vector<RegionEmbedding>& regionEmbeddings, distMatrix_t& costMatrix, track_t maxPossibleCost, track_t& maxCost, cv::Mat currFrame);
     void UpdateTrackingState(const regions_t& regions, cv::Mat currFrame, float fps);
+
 };

@@ -328,8 +328,19 @@ public:
     size_t SkippedFrames() const;
     size_t& SkippedFrames();
 
-    TrackingObject ConstructObject() const;
+	TrackingObject ConstructObject() const;
 
+	void KalmanPredictPoint();
+	void KalmanPredictRect();
+	bool GetFilterObjectSize()
+	{
+		return m_filterObjectSize;
+	}
+	bool  CTrack::isOverspeed(const cv::RotatedRect& rrect, float speedThres) const;
+	size_t GetTraceSize()
+	{
+		return m_trace.size();
+	}
 private:
 	TKalmanFilter m_kalman;
 	CRegion m_lastRegion;

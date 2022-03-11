@@ -882,3 +882,16 @@ void TKalmanFilter::GetPtStateAndResCov(cv::Mat &res1, cv::Mat &res2) const
 		}
 	}
 }
+void TKalmanFilter::GetPredictState(cv::Mat &predict) const
+{
+	if (m_initialized)
+	{
+		switch (m_type)
+		{
+		case tracking::KalmanLinear:
+		{
+			predict = m_linearKalman.statePre;
+		}
+		}
+	}
+}
