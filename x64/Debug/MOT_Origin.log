@@ -1,3 +1,0 @@
-﻿  main.cpp
-g:\python_based_algo\mot_tracking_haron\mot_origin\main.cpp(298): warning C4305: “参数”: 从“double”到“float”截断
-  MOT_Origin.vcxproj -> G:\python_based_algo\MOT_tracking_haron\x64\Debug\MOT_Origin.exe
